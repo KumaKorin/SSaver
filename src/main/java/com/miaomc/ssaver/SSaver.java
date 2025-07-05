@@ -31,11 +31,24 @@ public final class SSaver extends JavaPlugin {
         // 创建命令处理器实例
         SsaverCommand commandHandler = new SsaverCommand(this);
 
-        // 使用调度器延迟注册命令
-        getServer().getScheduler().runTask(this, () -> {
-            commandHandler.register();
-            getLogger().info("命令已注册");
-        });
+        // Folia 兼容调度命令注册
+        try {
+            Class<?> foliaSchedulerClass = Class.forName("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler");
+            Object scheduler = getServer().getClass().getMethod("getGlobalRegionScheduler").invoke(getServer());
+            foliaSchedulerClass.getMethod("execute", JavaPlugin.class, Runnable.class)
+                    .invoke(scheduler, this, (Runnable) () -> {
+                        commandHandler.register();
+                        getLogger().info("命令已注册 (Folia)");
+                    });
+        } catch (ClassNotFoundException e) {
+            // 非 Folia 环境，使用 Bukkit Scheduler
+            getServer().getScheduler().runTask(this, () -> {
+                commandHandler.register();
+                getLogger().info("命令已注册 (Bukkit)");
+            });
+        } catch (Exception e) {
+            getLogger().severe("命令注册调度失败: " + e.getMessage());
+        }
 
         getLogger().info("SSaver 插件已启用！");
     }

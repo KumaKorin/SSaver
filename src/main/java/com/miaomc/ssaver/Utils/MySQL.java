@@ -7,7 +7,6 @@ import com.miaomc.ssaver.SSaver;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.sql.*;
 import java.util.HashSet;
@@ -276,42 +275,29 @@ public class MySQL {
      * @return 操作结果的Future
      */
     private CompletableFuture<Boolean> saveDataAsync(String uuid, JsonObject data, String dataVersion) {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
         Gson gson = new Gson();
-
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                String sql = "INSERT INTO `" + tablename + "` (uuid, serverName, data, dataVersion) VALUES (?, ?, ?, ?) " +
-                        "ON DUPLICATE KEY UPDATE data = ?, dataVersion = ?, updateDate = CURRENT_TIMESTAMP";
-
-                try (Connection connection = dataSource.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(sql)) {
-
-                    String jsonString = gson.toJson(data);
-                    statement.setString(1, uuid);
-                    statement.setString(2, serverName);
-                    statement.setString(3, jsonString);
-                    statement.setString(4, dataVersion);
-                    statement.setString(5, jsonString);
-                    statement.setString(6, dataVersion);
-
-                    // 其余代码不变
-                    int rowsAffected = statement.executeUpdate();
-
-                    if (plugin.getConfig().getBoolean("settings.showSaveMessages", true)) {
-                        plugin.getLogger().info("已异步保存玩家 " + uuid + " 在服务器 " + serverName + " 的数据");
-                    }
-
-                    future.complete(rowsAffected > 0);
-                } catch (SQLException e) {
-                    plugin.getLogger().log(Level.SEVERE, "异步保存玩家 " + uuid + " 的数据失败", e);
-                    future.complete(false);
+        return CompletableFuture.supplyAsync(() -> {
+            String sql = "INSERT INTO `" + tablename + "` (uuid, serverName, data, dataVersion) VALUES (?, ?, ?, ?) " +
+                    "ON DUPLICATE KEY UPDATE data = ?, dataVersion = ?, updateDate = CURRENT_TIMESTAMP";
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
+                String jsonString = gson.toJson(data);
+                statement.setString(1, uuid);
+                statement.setString(2, serverName);
+                statement.setString(3, jsonString);
+                statement.setString(4, dataVersion);
+                statement.setString(5, jsonString);
+                statement.setString(6, dataVersion);
+                int rowsAffected = statement.executeUpdate();
+                if (plugin.getConfig().getBoolean("settings.showSaveMessages", true)) {
+                    plugin.getLogger().info("已异步保存玩家 " + uuid + " 在服务器 " + serverName + " 的数据");
                 }
+                return rowsAffected > 0;
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "异步保存玩家 " + uuid + " 的数据失败", e);
+                return false;
             }
-        }.runTaskAsynchronously(plugin);
-
-        return future;
+        });
     }
 
     /**
